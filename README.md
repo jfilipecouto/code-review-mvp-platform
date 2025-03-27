@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Tech Health Appendix Generator
+
+## Setting Up GitHub OAuth Integration
+
+To integrate GitHub OAuth into your project, you'll need to create a GitHub OAuth key and implement the callback for authentication. Follow these steps to set up OAuth for your Next.js application.
+
+### Step 1: Create an OAuth Key on GitHub
+
+1. **Go to GitHub Developer Settings**: Navigate to [GitHub Developer Settings](https://github.com/settings/developers).
+2. **Create a new OAuth Application**:
+   - Click on "New OAuth App."
+   - Fill in the following fields:
+     - **Application Name**: Choose a name for your application (e.g., "Tech Health Appendix").
+     - **Homepage URL**: The URL where your app will be hosted (usually `http://localhost:3000` during development).
+     - **Authorization Callback URL**: The URL where GitHub will redirect users after authentication, e.g., `http://localhost:3000/api/auth/callback/github`.
+   
+3. **Save the key**: Once you save the application, you'll receive a `Client ID` and `Client Secret`. Keep these credentials safe as you'll need them for the next steps.
+
+```GITHUB_ID=your-github-client-id
+GITHUB_SECRET=your-github-client-secret
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=your-random-string-here
+OPENAI_API_KEY=your-openai-api-key```
+
+### Step 2: Install Dependencies
+
+You need to install `next-auth` to handle the authentication with GitHub.
+
+1. Install `next-auth` in your Next.js project:
+
+   ```bash
+   npm install next-auth
+
+
+## One-Line Pitch
+A dynamic pitch deck appendix generator that audits your codebase to build investor confidence.
+
+## Problem Addressed
+Startups struggle to convincingly demonstrate technical robustness and manage tech risk in their pitch decks.
+
+## Target Audience / Market
+Early-stage startups seeking Series A funding who need to validate their technical health.
+
+## Solution Overview
+Users provide read-only access to their GitHub/CI-CD systems; the tool then analyzes code quality, deployment frequency, and technical debt, generating a polished “Tech Health Appendix” complete with peer benchmarks and an optimization roadmap.
+
+## Unique Value Proposition (10x Better)
+Transforms technical weaknesses into strategic strengths by offering clear, data-driven insights that resonate with investors.
+
+## Key Features / MVP Feature Ideas
+1. Integration with GitHub/CI-CD systems
+2. Analysis of code quality, deployment metrics, and tech debt
+3. Automated generation of a Tech Health Appendix
+4. Peer benchmarking and actionable optimization recommendations
+
+## Notes / Additional Considerations
+- Ensure secure handling of code data.
+- Consider future expansion to other technical metrics, like security vulnerabilities and system scalability.
 
 ## Getting Started
 
-First, run the development server:
+To run the project locally, follow these steps:
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. Clone the repository:
+    ```bash
+    git clone <repository-url>
+    ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+    ```bash
+    npm install
+    ```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+3. Run the development server:
+    ```bash
+    npm run dev
+    ```
