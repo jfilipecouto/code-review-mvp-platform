@@ -167,35 +167,94 @@ export class GitHubService {
   }
 
   private async getMainFiles(owner: string, repo: string) {
-    const files = await this.octokit.repos.getContent({
-      owner,
-      repo,
-      path: ''
-    });
-
-    // Filtrar arquivos relevantes (ex: .js, .ts, .py, etc)
-    return files.data.filter(file => 
-      /\.(js|ts|py|java|go|rb)$/.test(file.name)
-    ).slice(0, 5); // Limitar a 5 arquivos principais
-  }
-
-  private async getFileContent(fileInfo: { path: string, owner: string, repo: string }): Promise<string> {
     try {
-      const response = await this.octokit.repos.getContent({
-        owner: fileInfo.owner,
-        repo: fileInfo.repo,
-        path: fileInfo.path,
+      // Buscar a estrutura do repositório
+      const tree = await this.octokit.git.getTree({
+        owner,
+        repo,
+        tree_sha: 'main', // ou 'master'
+        recursive: 'true'
       });
 
-      // A API do GitHub retorna o conteúdo em base64
-      if ('content' in response.data && !Array.isArray(response.data)) {
-        const content = Buffer.from(response.data.content, 'base64').toString();
-        return content;
-      }
+      // Filtrar arquivos relevantes
+      const relevantFiles = tree.data.tree
+        .filter(file => {
+          // Verificar se é um arquivo (não diretório)
+          if (file.type !== 'blob') return false;
 
-      throw new Error('Arquivo não encontrado ou é um diretório');
+          // Extensões relevantes para análise
+          const relevantExtensions = [
+            '.ts', '.tsx', '.js', '.jsx', 
+            '.py', '.java', '.go', '.rb',
+            '.php', '.cs', '.cpp', '.c'
+          ];
+
+          // Caminhos a ignorar
+          const ignorePaths = [
+            'node_modules/', 'dist/', 'build/',
+            'vendor/', '.git/', 'test/', 'tests/',
+            '.next/', 'public/', 'assets/'
+          ];
+
+          // Verificar extensão e caminho
+          const shouldAnalyze = relevantExtensions.some(ext => 
+            file.path.endsWith(ext)
+          ) && !ignorePaths.some(path => 
+            file.path.startsWith(path)
+          );
+
+          return shouldAnalyze;
+        })
+        .slice(0, 10); // Limitar a 10 arquivos mais relevantes
+
+      // Ordenar por importância (arquivos principais primeiro)
+      const priorityFiles = ['index', 'main', 'app', 'server', 'client', 'core'];
+      relevantFiles.sort((a, b) => {
+        const aName = a.path.toLowerCase();
+        const bName = b.path.toLowerCase();
+        
+        const aIsPriority = priorityFiles.some(p => aName.includes(p));
+        const bIsPriority = priorityFiles.some(p => bName.includes(p));
+        
+        if (aIsPriority && !bIsPriority) return -1;
+        if (!aIsPriority && bIsPriority) return 1;
+        return 0;
+      });
+
+      // Retornar informações dos arquivos
+      return relevantFiles.map(file => ({
+        name: file.path,
+        sha: file.sha,
+        size: file.size
+      }));
+
     } catch (error) {
-      console.error('Erro ao obter conteúdo do arquivo:', error);
+      console.error('Erro ao buscar arquivos:', error);
+      return [];
+    }
+  }
+
+  private async getFileContent({ owner, repo, path }: { 
+    owner: string; 
+    repo: string; 
+    path: string; 
+  }) {
+    try {
+      const response = await this.octokit.repos.getContent({
+        owner,
+        repo,
+        path,
+      });
+
+      // Verificar se é um arquivo único
+      if ('content' in response.data) {
+        // Decodificar o conteúdo de base64
+        return Buffer.from(response.data.content, 'base64').toString('utf-8');
+      }
+      
+      throw new Error('Path não é um arquivo');
+    } catch (error) {
+      console.error(`Erro ao buscar conteúdo do arquivo ${path}:`, error);
       throw error;
     }
   }
@@ -213,10 +272,13 @@ export class GitHubService {
             repo,
             path: file.name
           });
-          return this.codeAnalysis.analyzeCode(
-            content,
-            file.name.split('.').pop() || 'unknown'
-          );
+          return {
+            file: file.name,
+            analysis: await this.codeAnalysis.analyzeCode(
+              content,
+              file.name.split('.').pop() || 'unknown'
+            )
+          };
         })
       );
 
@@ -229,9 +291,12 @@ export class GitHubService {
         };
       }
 
+      // Combinar os insights de forma estruturada
+      const combinedAnalysis = this.combineAnalyses(analysisResults);
+
       return {
-        qualityScore: this.calculateAverageScore(analysisResults),
-        insights: this.combineInsights(analysisResults),
+        qualityScore: combinedAnalysis.averageScore,
+        insights: this.formatAnalysis(combinedAnalysis),
         timestamp: new Date().toISOString()
       };
     } catch (error) {
@@ -244,18 +309,116 @@ export class GitHubService {
     }
   }
 
-  private calculateAverageScore(results: CodeAnalysisResult[]): number {
-    if (results.length === 0) return 0;
-    const sum = results.reduce((acc, result) => acc + result.qualityScore, 0);
-    return Math.round(sum / results.length);
+  private combineAnalyses(results: Array<{ file: string; analysis: CodeAnalysisResult }>) {
+    const fileAnalyses: { [key: string]: any } = {};
+    let totalScore = 0;
+
+    results.forEach(({ file, analysis }) => {
+      const sections = analysis.insights.split('\n\n');
+      const fileAnalysis = {
+        architecture: this.extractSection(analysis.insights, "QUALIDADE E ARQUITETURA"),
+        maintainability: this.extractSection(analysis.insights, "MANUTENIBILIDADE E ESCALABILIDADE"),
+        technicalDebt: this.extractSection(analysis.insights, "DÍVIDA TÉCNICA"),
+        risks: this.extractSection(analysis.insights, "RISCOS E OPORTUNIDADES"),
+        recommendations: this.extractSection(analysis.insights, "RECOMENDAÇÕES PARA INVESTIDORES")
+      };
+
+      fileAnalyses[file] = fileAnalysis;
+      totalScore += analysis.qualityScore || 0;
+    });
+
+    const averageScore = Math.round(totalScore / results.length);
+
+    return {
+      averageScore,
+      totalFiles: results.length,
+      fileAnalyses,
+      categories: {
+        risks: new Set(Object.values(fileAnalyses).flatMap(a => a.risks.split('\n').filter(Boolean))),
+        recommendations: new Set(Object.values(fileAnalyses).flatMap(a => a.recommendations.split('\n').filter(Boolean)))
+      }
+    };
   }
 
-  private combineInsights(results: CodeAnalysisResult[]): string {
-    if (results.length === 0) return "Nenhuma análise disponível.";
+  private formatAnalysis(combined: any): string {
+    return `VISÃO GERAL
+Score Médio: ${combined.averageScore}/100
+Total de Arquivos: ${combined.totalFiles}
+${this.getHealthStatus(combined.averageScore)}
+
+PRINCIPAIS PONTOS DE ATENÇÃO
+${Array.from(combined.categories.risks).map(risk => `• ${risk}`).join('\n')}
+
+OPORTUNIDADES DE MELHORIA
+${Array.from(combined.categories.recommendations).map(rec => `• ${rec}`).join('\n')}
+
+DETALHES POR ARQUIVO
+${Object.entries(combined.fileAnalyses || {}).map(([fileName, analysis]: [string, any]) => {
+  const { architecture, maintainability, technicalDebt } = analysis;
+  const fileScore = this.calculateFileScore(architecture, maintainability, technicalDebt);
+  
+  return `${fileName}
+• Score de Qualidade: ${fileScore}/100
+• Análise de Arquitetura:
+${architecture.split('\n').map(line => `  - ${line.trim()}`).join('\n')}
+• Análise de Manutenibilidade:
+${maintainability.split('\n').map(line => `  - ${line.trim()}`).join('\n')}
+• Análise de Dívida Técnica:
+${technicalDebt.split('\n').map(line => `  - ${line.trim()}`).join('\n')}`;
+}).join('\n\n')}`;
+  }
+
+  private getHealthStatus(score: number): string {
+    if (score >= 80) return "excelente saúde técnica";
+    if (score >= 60) return "boa saúde técnica";
+    if (score >= 40) return "saúde técnica moderada";
+    return "necessidade significativa de melhorias";
+  }
+
+  private calculateFileScore(architecture: string, maintainability: string, technicalDebt: string): number {
+    const baseScore = 70;
+    let adjustment = 0;
+
+    // Análise de arquitetura (peso 0.4)
+    const architectureScore = this.analyzeSection(architecture);
     
-    return results
-      .map((result, index) => `Arquivo ${index + 1}:\n${result.insights}`)
-      .join('\n\n');
+    // Análise de manutenibilidade (peso 0.3)
+    const maintainabilityScore = this.analyzeSection(maintainability);
+    
+    // Análise de dívida técnica (peso 0.3)
+    const technicalDebtScore = this.analyzeSection(technicalDebt);
+
+    const weightedScore = (architectureScore * 0.4) + (maintainabilityScore * 0.3) + (technicalDebtScore * 0.3);
+    return Math.max(0, Math.min(100, Math.round(baseScore + weightedScore)));
+  }
+
+  private analyzeSection(text: string): number {
+    const positiveIndicators = [
+      'bem estruturado', 'modular', 'eficiente', 'robusto', 'testado',
+      'documentado', 'escalável', 'manutenível', 'seguro', 'otimizado'
+    ];
+
+    const negativeIndicators = [
+      'complexo', 'confuso', 'duplicado', 'frágil', 'acoplado',
+      'não testado', 'obsoleto', 'inseguro', 'lento', 'problemático'
+    ];
+
+    const positiveCount = positiveIndicators.filter(word => text.toLowerCase().includes(word)).length;
+    const negativeCount = negativeIndicators.filter(word => text.toLowerCase().includes(word)).length;
+
+    return (positiveCount * 5) - (negativeCount * 5);
+  }
+
+  private extractSection(text: string, sectionTitle: string): string {
+    const sections = text.split('\n\n');
+    const section = sections.find(s => s.startsWith(sectionTitle));
+    if (!section) return '';
+    
+    return section
+      .split('\n')
+      .slice(1) // Remove o título da seção
+      .filter(line => line.trim())
+      .join('\n');
   }
 
   private getFileLanguage(filename: string): string {
